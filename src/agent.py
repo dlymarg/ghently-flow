@@ -1,34 +1,13 @@
 import json
-from dataclasses import asdict
-from typing import Optional
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from sqlalchemy.orm import Session
 
 from models import SensorNode
 from physics import evaluate_sensor_telemetry, TriageLevel
 
-client = OpenAI()
-
-# 1. Define strict Tool Calling Schema
-TRIAGE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "evaluate_sensor_telemetry",
-            "description": "Calculates real-time macroscopic fluid continuity, volumetric flow rates, and fluid compression acceleration for a given camera node.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "camera_id": {
-                        "type": "string",
-                        "description": "Unique camera identifier (e.g., 'camera0', 'camera1')",
-                    }
-                },
-                "required": ["camera_id"],
-            },
-        },
-    }
-]
+# Initializes client using GEMINI_API_KEY from environment
+client = genai.Client()
 
 
 def build_system_prompt(sensor: SensorNode) -> str:
@@ -56,82 +35,52 @@ CRITICAL PROTOCOLS:
 """
 
 
-def run_triage_agent(session: Session, camera_id: str, model: str = "gpt-4o") -> str:
+def run_triage_agent(session: Session, camera_id: str, model: str = "gemini-2.5-flash") -> str:
     """
-    Executes a ReAct tool-calling loop grounded in physical continuity telemetry.
+    Executes a Gemini tool-calling ReAct triage loop grounded in physical continuity telemetry.
     """
     # 1. Retrieve spatial context from the database
     sensor = session.query(SensorNode).filter(SensorNode.camera_id == camera_id).first()
     if not sensor:
         return f"ERROR: Sensor node '{camera_id}' does not exist in the database."
 
-    messages = [
-        {"role": "system", "content": build_system_prompt(sensor)},
-        {"role": "user", "content": f"Assess crowd safety and issue routing directives for {camera_id}."},
-    ]
+    # 2. Define the tool as a scoped Python callable
+    # Gemini automatically extracts the function schema from type hints and docstrings
+    def evaluate_sensor_telemetry_tool(camera_id: str) -> str:
+        """Calculates real-time macroscopic fluid continuity, volumetric flow rates,
+        and fluid compression acceleration for a given camera node.
+
+        Args:
+            camera_id: Unique camera identifier (e.g., 'camera0', 'camera1').
+        """
+        metrics = evaluate_sensor_telemetry(session, camera_id)
+        return json.dumps({
+            "camera_id": metrics.camera_id,
+            "timestamp": metrics.timestamp.isoformat(),
+            "inflow_rate": metrics.inflow,
+            "outflow_rate": metrics.outflow,
+            "q_net_accumulation": metrics.q_net,
+            "compression_acceleration_dq_dt": metrics.dq_dt,
+            "delta_t_seconds": metrics.delta_t_seconds,
+            "status": metrics.status.value,
+            "deterministic_summary": metrics.directive_summary,
+        })
 
     try:
-        # Initial model completion request
-        response = client.chat.completions.create(
+        # 3. Generate response with automated tool execution
+        response = client.models.generate_content(
             model=model,
-            messages=messages,
-            tools=TRIAGE_TOOLS,
-            tool_choice="auto",
-            temperature=0.0,  # Deterministic output for emergency operations
+            contents=f"Assess crowd safety and issue routing directives for {camera_id}.",
+            config=types.GenerateContentConfig(
+                system_instruction=build_system_prompt(sensor),
+                tools=[evaluate_sensor_telemetry_tool],
+                temperature=0.2,
+            ),
         )
 
-        response_message = response.choices[0].message
-
-        # 2. Safely verify if the model invoked a tool call
-        if not response_message.tool_calls:
-            return response_message.content or "STATUS NOMINAL: No corrective action required."
-
-        # Append model's tool call intention to conversation history
-        messages.append(response_message)
-
-        # 3. Execute tool calls safely
-        for tool_call in response_message.tool_calls:
-            if tool_call.function.name == "evaluate_sensor_telemetry":
-                args = json.loads(tool_call.function.arguments)
-                target_camera = args.get("camera_id", camera_id)
-
-                # Execute deterministic Python physics calculation
-                metrics = evaluate_sensor_telemetry(session, target_camera)
-
-                # Serialize dataclass to JSON string for the tool response
-                metrics_payload = json.dumps(
-                    {
-                        "camera_id": metrics.camera_id,
-                        "timestamp": metrics.timestamp.isoformat(),
-                        "inflow_rate": metrics.inflow,
-                        "outflow_rate": metrics.outflow,
-                        "q_net_accumulation": metrics.q_net,
-                        "compression_acceleration_dq_dt": metrics.dq_dt,
-                        "delta_t_seconds": metrics.delta_t_seconds,
-                        "status": metrics.status.value,
-                        "deterministic_summary": metrics.directive_summary,
-                    }
-                )
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": metrics_payload,
-                    }
-                )
-
-        # 4. Final synthesis step: LLM interprets the physics payload into command directives
-        final_response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.2,
-        )
-
-        return final_response.choices[0].message.content or "No directive generated."
+        return response.text or "STATUS NOMINAL: No corrective action required."
 
     except Exception as e:
-        # Fail-safe command center message
         return (
             f"SYSTEM FAULT: Automated AI Triage Agent encountered an unhandled exception: {str(e)}. "
             f"Manual operator dispatch required for node '{camera_id}'."
