@@ -35,7 +35,7 @@ CRITICAL PROTOCOLS:
 """
 
 
-def run_triage_agent(session: Session, camera_id: str, model: str = "gemini-2.5-flash") -> str:
+def run_triage_agent(session: Session, camera_id: str, model: str = "gemini-3.6-flash") -> str:
     """
     Executes a Gemini tool-calling ReAct triage loop grounded in physical continuity telemetry.
     """
