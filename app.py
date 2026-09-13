@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add src/ to the Python path
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -203,4 +209,3 @@ if st.session_state.ai_directive:
         """,
         unsafe_allow_html=True
     )
-    
