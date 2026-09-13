@@ -43,25 +43,13 @@ The system models pedestrian corridors using macroscopic fluid continuity princi
 
 This project maps the proprietary Palantir Foundry and AIP architecture into an open-source, modular Python stack:
 
-| Palantir Foundry / AIP Component
-
- | Open-Source Implementation | Core Responsibilities |
-| --- | --- | --- |
-| **Pipeline Builder**<br> | `src/etl.py` (Pandas / SQLite) | Ingests raw telemetry, parses coordinates across formats (WKT / `geo_point_2d`), unpivots wide columns (43 streams down to directional pedestrian flux), aggregates inflow/outflow per node, and generates primary keys.
-
- |
-| **Ontology Manager**<br> | `src/models.py` (SQLAlchemy ORM) | Creates a semantic digital twin by modeling physical `SensorNode` objects and `CrowdChokepoint` telemetry logs with dynamic 1-to-many relationships and compound indexing.
-
- |
-| **Code Repository**<br> | `src/physics.py` (Python Fluid Engine) | Computes macroscopic mass conservation, calculates time-normalized compression acceleration ($\frac{dQ}{dt}$), and applies operational staleness guardrails.
-
- |
-| **AIP Logic**<br> | `src/agent.py` (Google Gemini GenAI SDK) | Employs `gemini-3.6-flash` with automated function calling to execute deterministic physics checks and draft structured incident-command directives.
-
- |
-| **Workshop Module**<br> | `app.py` (Streamlit + Folium + Plotly) | Delivers an interactive operations dashboard featuring geospatial digital-twin mapping, dynamic KPI cards with inverted accumulation deltas, and time-series telemetry charts.
-
- |
+| Palantir Foundry / AIP Component | Open-Source Implementation | Core Responsibilities |
+| :--- | :--- | :--- |
+| **Pipeline Builder** | `src/etl.py` (Pandas / SQLite) | Ingests raw telemetry, parses coordinates across formats (WKT / `geo_point_2d`), unpivots wide columns (43 streams down to directional pedestrian flux), aggregates inflow/outflow per node, and generates primary keys. |
+| **Ontology Manager** | `src/models.py` (SQLAlchemy ORM) | Creates a semantic digital twin by modeling physical `SensorNode` objects and `CrowdChokepoint` telemetry logs with dynamic 1-to-many relationships and compound indexing. |
+| **Code Repository** | `src/physics.py` (Python Fluid Engine) | Computes macroscopic mass conservation, calculates time-normalized compression acceleration (\(dQ/dt\)), and applies operational staleness guardrails. |
+| **AIP Logic** | `src/agent.py` (Google Gemini GenAI SDK) | Employs `gemini-3.6-flash` with automated function calling to execute deterministic physics checks and draft structured incident-command directives. |
+| **Workshop Module** | `app.py` (Streamlit + Folium + Plotly) | Delivers an interactive operations dashboard featuring geospatial digital-twin mapping, dynamic KPI cards with inverted accumulation deltas, and time-series telemetry charts. |
 
 ---
 
